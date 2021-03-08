@@ -12,6 +12,7 @@ use luya\helpers\ArrayHelper;
 use luya\helpers\StringHelper;
 use luya\admin\base\TypesInterface;
 use luya\admin\helpers\Angular;
+use luya\admin\ngrest\Config;
 
 /**
  * Base class for NgRest Plugins.
@@ -387,27 +388,7 @@ abstract class Plugin extends Component implements TypesInterface
      */
     protected function replaceFieldFromNgModelContext($ngModel, $field)
     {
-        if (empty($field)) {
-            return;
-        }
-
-        // get all keys
-        $parts = explode(".", $ngModel);
-        end($parts);
-        $key = key($parts);
-        // old last $field name
-        $oldField = $parts[$key];
-        if (StringHelper::endsWith($oldField, ']')) {
-            // its an i18n field which has ['en'] suffix, we should extra this and add to $field
-            if (preg_match('/\[.*\]/', $oldField, $matches) === 1) {
-                $field .= $matches[0];
-            }
-        }
-
-        // replace the last key with the new fieldname
-        $parts[$key] = $field;
-        
-        return implode(".", $parts);
+        return Config::replaceFieldFromNgModelContext($ngModel, $field);
     }
 
     /**
@@ -440,15 +421,7 @@ abstract class Plugin extends Component implements TypesInterface
      */
     public function getNgShowCondition($ngModel)
     {
-        preg_match_all('/{(.*?)}/', $this->condition, $matches, PREG_SET_ORDER);
-        $search = [];
-        $replace = [];
-        foreach ($matches as $match) {
-            $search[] = $match[0];
-            $replace[] = $this->replaceFieldFromNgModelContext($ngModel, $match[1]);
-        }
-        
-        return str_replace($search, $replace, $this->condition);
+        return Config::getNgCondition($ngModel, $this->condition);
     }
     
     /**
@@ -704,15 +677,10 @@ abstract class Plugin extends Component implements TypesInterface
     {
         if ($this->isAttributeWriteable($event) && $this->onBeforeFind($event)) {
             if ($this->i18n) {
-                $oldValue = $event->sender->getAttribute($this->name);
-                $event->sender->setI18nOldValue($this->name, $oldValue);
-                // get the new array value from an i18n json attribute
-                $value = I18n::decodeFindActive($oldValue, $this->i18nEmptyValue);
-                // set the new attribute value
-                $event->sender->setAttribute($this->name, $value);
-                // override the old attribute value in order to ensure this attribute is not marked as dirty
-                // see: https://github.com/luyadev/luya-module-admin/pull/567
-                $event->sender->setOldAttribute($this->name, $value);
+                $event->sender->setAttribute(
+                    $this->name,
+                    I18n::decodeFindActive($event->sender->getAttribute($this->name), $this->i18nEmptyValue)
+                );
             }
             
             $this->onAfterFind($event);
